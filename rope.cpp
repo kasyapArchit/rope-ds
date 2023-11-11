@@ -1,165 +1,225 @@
 #include <iostream>
 #include <string>
-#include <memory>
 #include <vector>
+#include <memory>
+
 using namespace std;
 
+int MAX_NODE_LENGTH = 5;
+
 class Node {
-  public:
-    virtual int weight() const = 0;
-    virtual int size() const = 0;
-    virtual char charAt(int) const = 0;
-    virtual string to_string() const = 0;
-    // using unique_ptr for automatic cleanup to prevent memory leaks
-    virtual pair<unique_ptr<Node>, unique_ptr<Node>> split(int index) = 0;
+public:
+    virtual ~Node() = default;
+
+    virtual bool empty() = 0;
+
+    virtual int size() = 0; // total size inclusive of left and right children
+    virtual char charAt(int index) = 0;
+
+    virtual string to_string() = 0;
+
+    virtual void display(string from, int level) = 0; // for debugging
 };
 
-class LeafNode: public Node {
-  private:
+class LeafNode : public Node {
+private:
+    int weight;
     string str;
 
-  public:
-    LeafNode(string s) : str{s} {}
-    
-    int weight() const override {
-      return size();
+public:
+    explicit LeafNode(string s) {
+        str = s;
+        weight = s.length();
     }
 
-    int size() const override {
-      return str.length();
+    bool empty() override {
+        return weight != 0;
     }
 
-    char charAt(int pos) const override
-    {
-      if (pos < size())
-      {
-        return str[pos];
-      }
-      return '\0'; // returning null charcter if not a valid position
+    int size() override {
+        return weight;
     }
 
-    string to_string() const override {
-      return str;
+    char charAt(int index) override {
+        if (index < weight)
+            return str[index];
+        return '\0';
     }
 
-    pair<unique_ptr<Node>, unique_ptr<Node>> split(int index) override {
-      unique_ptr<LeafNode> root1 = make_unique<LeafNode>(str.substr(0, index));
-      unique_ptr<LeafNode> root2 = make_unique<LeafNode>(str.substr(index));
-      return make_pair(root1, root2);
+    string to_string() override {
+        return str;
+    }
+
+    void display(string from, int level) override {
+        cout << "\n Leaf from " + from + " ,level " << level << " :" + str;
     }
 };
 
-
-class InternalNode: public Node {
-  private:
+class InternalNode : public Node {
+private:
     unique_ptr<Node> left, right;
+    int weight;
 
-    static string getString(Node* node) {
-      string res = "";
-      if (node == nullptr)
-        return res;
+public:
+    ~InternalNode() override {
+        vector<unique_ptr<Node> > unvisitedNodes, garbageNodes;
 
-      vector<Node *> unvisitedNodes;
-      // inorder traversal
-      while(node != nullptr || unvisitedNodes.size()) {
-        if(node != nullptr) {
-          unvisitedNodes.push_back(node);
+        unvisitedNodes.push_back(std::move(left));
+        unvisitedNodes.push_back(std::move(right));
 
-          InternalNode *tmp = dynamic_cast<InternalNode *>(node);
-          if(tmp != nullptr)
-            node = tmp->left.get();
-          else
-            node = nullptr;
-        } else {
-          node = unvisitedNodes.back();
-          unvisitedNodes.pop_back();
+        while (!unvisitedNodes.empty()) {
+            unique_ptr<Node> currNode = std::move(unvisitedNodes.back());
+            unvisitedNodes.pop_back();
 
-          InternalNode *tmp = dynamic_cast<InternalNode *>(node);
-          if(tmp != nullptr)
-            node = tmp->right.get();
-          else {
-            res += node->to_string();
-            node = nullptr;
-          }
+            auto *tmp = dynamic_cast<InternalNode *>(currNode.get());
+            if (tmp != nullptr) {
+                if (tmp->left)
+                    unvisitedNodes.push_back(std::move(tmp->left));
+                if (tmp->right)
+                    unvisitedNodes.push_back(std::move(tmp->right));
+
+                garbageNodes.push_back(std::move(currNode));
+            } else
+                garbageNodes.push_back(std::move(currNode));
         }
-      }
-      return res;
     }
 
-  public:
-    InternalNode(unique_ptr<Node> left, unique_ptr<Node> right) : left{move(left)}, right{move(right)} {}
-    // InternalNode(unique_ptr<Node> left, unique_ptr<Node> right) {
-    //   this->left = make_unique<Node>(left);
-    //   this->right = make_unique<Node>(right);
-    // }
+    InternalNode(unique_ptr<Node> left, unique_ptr<Node> right, int wt) : left{std::move(left)}, right{std::move(right)},
+                                                                          weight{wt} {}
 
-    ~InternalNode() {
-      // dfs to collect all nodes in garbageNodes
-      // since this is a vector<unique_ptr> all of these will be destroyed at the end.
-      vector<unique_ptr<Node>> unvisitedNodes, garbageNodes;
-
-      unvisitedNodes.push_back(move(left));
-      unvisitedNodes.push_back(move(right));
-
-      while(unvisitedNodes.size()) {
-        unique_ptr<Node> currNode = move(unvisitedNodes.back());
-        unvisitedNodes.pop_back();
-
-        InternalNode *tmp = dynamic_cast<InternalNode *>(currNode.get());
-        if(tmp != nullptr) {
-          if(tmp->left)
-            unvisitedNodes.push_back(move(tmp->left));
-          if (tmp->right)
-            unvisitedNodes.push_back(move(tmp->right));
-
-          garbageNodes.push_back(move(currNode));
-        } else
-          garbageNodes.push_back(move(currNode));
-      }
+    InternalNode(unique_ptr<Node> left, unique_ptr<Node> right) : left{std::move(left)}, right{std::move(right)} {
+        weight = left->size();
     }
 
-    int weight() const override {
-      return left->size();
+    explicit InternalNode(const string& s) {
+        int mid = ceil(s.length() / (2*1.0));
+        cout << "mid: " << mid << '\n';
+        if (mid < MAX_NODE_LENGTH)
+            left = make_unique<LeafNode>(s.substr(0, mid));
+        else
+            left = make_unique<InternalNode>(s.substr(0, mid));
+        if (s.length() - mid < MAX_NODE_LENGTH && mid < s.length())
+            right = make_unique<LeafNode>(s.substr(mid));
+        else if(mid<s.length())
+            right = make_unique<InternalNode>(s.substr(mid));
+
+        weight = mid;
     }
 
-    int size() const override {
-      vector<Node *> unvisitedNodes;
-      unvisitedNodes.push_back(left.get());
-      unvisitedNodes.push_back(right.get());
-
-      int sz = 0;
-      while (unvisitedNodes.size()) {
-        Node* currNode = unvisitedNodes.back();
-        unvisitedNodes.pop_back();
-
-        // if InternalNode
-        // else return size from LeafNode
-        InternalNode *tmp = dynamic_cast<InternalNode *>(currNode);
-
-        if(tmp != nullptr) {
-          if(tmp->left)
-            unvisitedNodes.push_back(tmp->left.get());
-          if(tmp->right)
-            unvisitedNodes.push_back(tmp->right.get());
-        } else
-          sz += currNode->size();
-      }
-      return sz;
+    bool empty() override {
+        return size() != 0;
     }
 
-    char charAt(int pos) const override {
-      int currWeight = weight();
-      if(pos < currWeight)
-        return left->charAt(pos);
-      else
-        return right->charAt(pos - currWeight);
+    int size() override {
+        int res = weight;
+        if (right)
+            res += right->size();
+        return res;
     }
 
-    string to_string() const override {
-      return getString(left.get()) + getString(right.get());
+    char charAt(int index) override {
+        if (left && index < weight)
+            return left->charAt(index);
+        else if (right)
+            return right->charAt(index - weight);
+        else
+            return '\0';
     }
 
-    pair<unique_ptr<Node>, unique_ptr<Node>> split(int index) override {
-      
+    string to_string() override {
+        if (right)
+            return left->to_string() + right->to_string();
+        return left->to_string();
+    }
+
+    void display(string from, int level) override {
+        cout << "\n Internal from " + from + " ,level: " << level << " ,weight :" << weight;
+        if(left) left->display("left", level+1);
+        if(right) right->display("right", level+1);
     }
 };
+
+class Rope {
+private:
+    unique_ptr<InternalNode> root;
+    int length; // size of rope => length of string
+
+public:
+    ~Rope() {
+        root.reset();
+    }
+
+    explicit Rope(string s) {
+        root = make_unique<InternalNode>(s);
+        length = s.length();
+    }
+
+    bool empty() const {
+        return !length;
+    }
+
+    int size() const {
+        return length;
+    }
+
+    int calculateSize() {
+        return root->size();
+    }
+
+    void clear() {
+        root.reset();
+        root = make_unique<InternalNode>("");
+        length = 0;
+    }
+
+    bool insert(int idx, const string& s) {
+        // update size
+        length += s.length();
+    }
+
+    bool erase(int first, int last) {
+        // update size
+        length -= last - first + 1;
+    }
+
+    char charAt(int index) {
+        return root->charAt(index);
+    }
+
+    Rope *subrope(int first, int last) {
+    }
+
+    Rope *concat(Rope *r2) {
+        // update size
+        length += r2->size();
+    }
+
+    Rope *push_back(string s) {
+        // update size
+        length += s.length();
+    }
+
+    string to_string() {
+        return root->to_string();
+    }
+
+    pair<Rope *, Rope *> split(int index) {
+        // update size
+        length = index;
+    }
+
+    void display() {
+        root->display("root", 0);
+    }
+};
+
+int main() {
+    string s = "How would code outputs look without line breaks?";
+    Rope *rope = new Rope("");
+    rope->display();
+    cout << '\n' << s.size() << ' ' << rope->size() << ' ' << rope->calculateSize() << '\n';
+    cout << rope->to_string() << '\n';
+    cout << rope->empty();
+    rope->clear();
+    return 0;
+}
