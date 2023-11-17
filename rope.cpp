@@ -11,8 +11,6 @@ class Node {
 public:
     virtual ~Node() = default;
 
-    virtual bool empty() = 0;
-
     virtual int size() = 0; // total size inclusive of left and right children
     virtual char charAt(int index) = 0;
 
@@ -30,10 +28,6 @@ public:
     explicit LeafNode(string s) {
         str = s;
         weight = s.length();
-    }
-
-    bool empty() override {
-        return weight != 0;
     }
 
     int size() override {
@@ -91,23 +85,18 @@ public:
         weight = left->size();
     }
 
-    explicit InternalNode(const string& s) {
-        int mid = ceil(s.length() / (2*1.0));
-        cout << "mid: " << mid << '\n';
+    explicit InternalNode(const string &s) {
+        int mid = ceil(s.length() / (2 * 1.0));
         if (mid < MAX_NODE_LENGTH)
             left = make_unique<LeafNode>(s.substr(0, mid));
         else
             left = make_unique<InternalNode>(s.substr(0, mid));
         if (s.length() - mid < MAX_NODE_LENGTH && mid < s.length())
             right = make_unique<LeafNode>(s.substr(mid));
-        else if(mid<s.length())
+        else if (mid < s.length())
             right = make_unique<InternalNode>(s.substr(mid));
 
         weight = mid;
-    }
-
-    bool empty() override {
-        return size() != 0;
     }
 
     int size() override {
@@ -134,8 +123,8 @@ public:
 
     void display(string from, int level) override {
         cout << "\n Internal from " + from + " ,level: " << level << " ,weight :" << weight;
-        if(left) left->display("left", level+1);
-        if(right) right->display("right", level+1);
+        if (left) left->display("left", level + 1);
+        if (right) right->display("right", level + 1);
     }
 };
 
@@ -152,6 +141,10 @@ public:
     explicit Rope(string s) {
         root = make_unique<InternalNode>(s);
         length = s.length();
+    }
+
+    unique_ptr<InternalNode> getRoot() {
+        return std::move(root);
     }
 
     bool empty() const {
@@ -172,7 +165,7 @@ public:
         length = 0;
     }
 
-    bool insert(int idx, const string& s) {
+    bool insert(int idx, const string &s) {
         // update size
         length += s.length();
     }
@@ -190,11 +183,17 @@ public:
     }
 
     Rope *concat(Rope *r2) {
+        unique_ptr<InternalNode> rightNode = r2->getRoot();
+        unique_ptr<InternalNode> leftNode = std::move(root);
+        root = make_unique<InternalNode>(std::move(leftNode), std::move(rightNode), length);
         // update size
         length += r2->size();
     }
 
     Rope *push_back(string s) {
+        unique_ptr<InternalNode> rightNode = make_unique<InternalNode>(s);
+        unique_ptr<InternalNode> leftNode = std::move(root);
+        root = make_unique<InternalNode>(std::move(leftNode), std::move(rightNode), length);
         // update size
         length += s.length();
     }
@@ -204,8 +203,12 @@ public:
     }
 
     pair<Rope *, Rope *> split(int index) {
-        // update size
-        length = index;
+        string str = root->to_string();
+        if(index < length) {
+            return make_pair(new Rope(str.substr(0, index)), new Rope(str.substr(index)));
+        } else {
+            return make_pair(new Rope(str), new Rope(""));
+        }
     }
 
     void display() {
@@ -215,11 +218,17 @@ public:
 
 int main() {
     string s = "How would code outputs look without line breaks?";
-    Rope *rope = new Rope("");
+    Rope *rope = new Rope(s);
+    Rope *rope2 = new Rope(s);
     rope->display();
     cout << '\n' << s.size() << ' ' << rope->size() << ' ' << rope->calculateSize() << '\n';
     cout << rope->to_string() << '\n';
-    cout << rope->empty();
+    rope->push_back(s);
+    cout << '\n' << rope->to_string() << '\n';
+    cout << '\n' << s.size() << ' ' << rope->size() << ' ' << rope->calculateSize() << '\n';
+    rope->concat(rope2);
+    cout << '\n' << rope->to_string() << '\n';
+    cout << '\n' << s.size() << ' ' << rope->size() << ' ' << rope->calculateSize() << '\n';
     rope->clear();
     return 0;
 }
